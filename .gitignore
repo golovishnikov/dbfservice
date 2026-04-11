@@ -1,0 +1,5 @@
+DBFService.exe
+/bin/*.log
+/bin/*.cfg
+/**/*.dcu
+/**/__history
