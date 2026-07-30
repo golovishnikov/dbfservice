@@ -80,6 +80,7 @@ begin
   FSL := TStringList.Create;
   try
     FSL.Text := disabledConfig;
+    FSL.Values['log4d.appender.logfile.fileName'] := ChangeFileExt(GetModuleName(0), '.log');
     Log4DReconfig(FSL);
   finally
     FSL.Free;
@@ -105,6 +106,7 @@ begin
     SL := TStringList.Create;
     try
       SL.Text := defConfig;
+      SL.Values['log4d.appender.logfile.fileName'] := ChangeFileExt(GetModuleName(0), '.log');
       SL.SaveToFile(Result);
     finally
       SL.Free;

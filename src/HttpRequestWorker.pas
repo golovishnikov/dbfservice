@@ -156,7 +156,7 @@ begin
           SendResponse(404, 'Not Found', 'application/json', '{"error":"Unknown operation"}');
       end
       else
-        SendResponse(400, 'Bad Request', 'application/json', '{"error":"Invalid path format"}');
+        SendResponse(400, 'Bad Request', 'application/json', '{"error":"message":"Invalid path format"}');
 
     finally
       PathParts.Free;

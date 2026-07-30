@@ -14,6 +14,9 @@ type
 
 implementation
 
+uses
+  Log4D;
+
 class function TQueryHandler.ExecuteCommand(const ConnStr, JsonBody: string): string;
 var
   Connection: TADOConnection;
@@ -22,11 +25,14 @@ var
   I: Integer;
   P: TParameter;
   RowsAffected: Integer;
+  Logger: TLogLogger;
+  Msg: string;
 begin
   Result := '';
   CoInitialize(nil);
-  Connection := TADOConnection.Create(nil);
-  Command := TADOCommand.Create(nil);
+    Connection := TADOConnection.Create(nil);
+    Command := TADOCommand.Create(nil);
+  Logger := TLogLogger.GetLogger(ClassName);
   try
     try
       XSO := TSuperObject.Create(JsonBody);
@@ -57,25 +63,26 @@ begin
           // Приведение типов из JSON в ADO
           if SameText(XParam.S['type'], 'datetime') then
           begin
-            // Ожидаем ISO формат: YYYY-MM-DDThh:nn:ss
+            // Ожидаем формат: YYYY-MM-DDThh:nn:ss
             P.DataType := ftDateTime;
-            if XParam.V['value'] = Null then
-              P.Value := 0
+            if XParam.Null['value'] <> jAssigned then
+              P.Value := System.Variants.Null
             else
               P.Value := ISO8601ToDate(XParam.S['value']);
           end
           else if SameText(XParam.S['type'], 'date') then
           begin
+            // Ожидается YYYY-MM-DD или YYYY-MM-DD
             P.DataType := ftDate;
-            if XParam.V['value'] = Null then
-              P.Value := 0
+            if XParam.Null['value'] <> jAssigned then
+              P.Value := System.Variants.Null
             else
               P.Value := ISO8601ToDate(XParam.S['value']);
           end
           else if SameText(XParam.S['type'], 'integer') then
           begin
             P.DataType := ftInteger;
-            if XParam.V['value'] = Null then
+            if XParam.Null['value'] <> jAssigned then
               P.Value := 0
             else
               P.Value := XParam.I['value'];
@@ -83,15 +90,23 @@ begin
           else if SameText(XParam.S['type'], 'float') then
           begin
             P.DataType := ftFloat;
-            if XParam.V['value'] = Null then
+            if XParam.Null['value'] <> jAssigned then
               P.Value := 0
             else
               P.Value := XParam.F['value'];
           end
+          else if SameText(XParam.S['type'], 'boolean') then
+          begin
+            P.DataType := ftBoolean;
+            if XParam.Null['value'] <> jAssigned then
+              P.Value := False
+            else
+              P.Value := XParam.B['value'];
+          end
           else
           begin
             P.DataType := ftString;
-            if XParam.V['value'] = Null then
+            if XParam.Null['value'] <> jAssigned then
               P.Value := ''
             else
               P.Value := XParam.S['value'];
@@ -106,9 +121,15 @@ begin
     except
       on E: Exception do
       begin
+        Msg := 'Params:';
+        for I := 0 to Command.Parameters.Count - 1 do
+        begin
+          Msg := Msg + sLineBreak +
+            Command.Parameters[I].Name + ': ' + VarToStr(Command.Parameters[I].Value);
+        end;
+        Logger.Error(E.Message + sLineBreak + JsonBody + sLineBreak + Msg);
         XErr := SO();
-        XErr.S['status'] := 'error';
-        XErr.S['message'] := E.Message;
+        XErr.S['error'] := E.Message;
         Result := XErr.AsJSON;
       end;
     end;

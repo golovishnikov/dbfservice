@@ -70,7 +70,7 @@ begin
 
       case Schema.Fields[I].DataType of
         // Числовые поля защищаем от "звездочек" (переполнения)
-        ftFloat, ftCurrency, ftBCD, ftInteger:
+        ftInteger, ftSmallint, ftWord, ftFloat, ftCurrency, ftBCD:
           Result := Result + Format('VAL(STR(%s, 20, 6)) AS %s', [FName, FName]);
         // DTOS: "YYYYMMDD"
         ftDate:
@@ -190,6 +190,18 @@ begin
             ftTime:
               XSO.V[FName] := FormatDateTime('hh:nn:ss', Query.Fields[I].AsDateTime);
 
+            // Целые числа
+            ftInteger, ftSmallint, ftWord:
+              XSO.I[FName] := Query.Fields[I].AsInteger;
+
+            // Числа с плавающей точкой / Float / Currency
+            ftFloat, ftCurrency, ftBCD:
+              XSO.F[FName] := Query.Fields[I].AsFloat;
+
+            // Логические поля
+            ftBoolean:
+              XSO.B[FName] := Query.Fields[I].AsBoolean;
+
             //  Строки с обрезкой пробелов
             ftString, ftFixedChar, ftMemo:
             begin
@@ -197,9 +209,9 @@ begin
               XSO.V[FName] := S;
             end;
 
-            // Все остальное (Числа, Логические)
+            // Если не распознан
             else
-              XSO.V[FName] := Query.Fields[I].Value;
+              XSO.V[FName] := Query.Fields[I].AsString;
           end;
         end;
 
