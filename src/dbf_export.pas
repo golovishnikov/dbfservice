@@ -12,10 +12,21 @@ type
   TDataExporter = class
   private
     class procedure SendHttpChunk(Socket: TTCPBlockSocket; const Data: string); static;
+  public
+    // Записать содержимое таблицы в http сокет.
+    // Запись выполняется пачками, согласно стандартам http
+    class procedure ExportTableToSocket(const ConnStr, TableName: string; Socket: TTCPBlockSocket);
+    // получить "защищенный" запрос содержимого таблицы.
+    // Запрос содержит служебное поле row_id - физический  номер записи в таблице.
+    // К датам и числовым полям применяются функции foxpro, решающие проблемы хранения данных в DBF.
     class function GetSafeSelectSQL(Connection: TADOConnection;
       const TableName: string; var FieldTypes: TFieldTypeMap): string; static;
-  public
-    class procedure ExportTableToSocket(const ConnStr, TableName: string; Socket: TTCPBlockSocket);
+    // Функция чтения текущей строки в JSON.
+    // FieldTypes - типы полей, полученые методом GetSafeSelectSQL
+    // FieldNames - список полей в нижнем регистре, чтобы не тратить время на приведение имен к нижему регистру
+    // при массовых выгрузках.
+    // Если число записей в FieldNames не равно числу полей в запросе, то список перезаполняется.
+    class function RowToJson(Query: TADOQuery; FieldTypes: TFieldTypeMap; FieldNames: TStringList): ISuperObject;
   end;
 
 implementation
@@ -83,10 +94,89 @@ begin
           Result := Result + FName;
       end;
     end;
-    Result := 'SELECT ' + Result + ' FROM ' + TableName;
+    FieldTypes.AddOrSetValue('row_id', ftInteger);
+    Result := 'SELECT recno() as row_id, ' + Result + ' FROM ' + TableName;
   finally
     Schema.Free;
   end;
+end;
+
+class function TDataExporter.RowToJson(Query: TADOQuery;
+  FieldTypes: TFieldTypeMap; FieldNames: TStringList): ISuperObject;
+var
+  I: Integer;
+  XSO: ISuperObject;
+  FName: string;
+  OriginalType: TFieldType;
+  S: string;
+begin
+  if Query.Fields.Count <> FieldNames.Count then
+    for I := 0 to Query.FieldCount - 1 do
+      FieldNames.Add(LowerCase(Query.Fields[I].FieldName));
+
+  // В X-SuperObject объект создается через TSuperObject.Create
+  XSO := TSuperObject.Create;
+  for I := 0 to Query.FieldCount - 1 do
+  begin
+    FName := FieldNames[I];
+    // Получаем исходный тип из нашего словаря
+    if not FieldTypes.TryGetValue(FName, OriginalType) then
+       OriginalType := ftUnknown;
+
+    if Query.Fields[I].IsNull then
+      XSO.V[FName] := null
+    else
+    case OriginalType of
+      ftDate:
+      begin
+        S := Query.Fields[I].AsString; // "YYYYMMDD"
+        if (Trim(S) = '') or (S = '00000000') then
+          XSO.V[FName] := null
+        else
+          XSO.V[FName] := Copy(S, 1, 4) + '-' + Copy(S, 5, 2) + '-' + Copy(S, 7, 2);
+      end;
+
+      ftDateTime:
+      begin
+        S := Query.Fields[I].AsString; // "YYYYMMDDHHMMSS"
+        // Пустой DateTime в FoxPro может прийти как пустая строка или нули
+        if (Trim(S) = '') or (S = '00000000000000') then
+          XSO.V[FName] := null
+        else
+          // Собираем ISO формат: YYYY-MM-DDThh:mm:ss
+          XSO.V[FName] :=
+            Copy(S, 1, 4) + '-' + Copy(S, 5, 2) + '-' + Copy(S, 7, 2) + 'T' +
+            Copy(S, 9, 2) + ':' + Copy(S, 11, 2) + ':' + Copy(S, 13, 2);
+      end;
+      // Время (hh:nn:ss)
+      ftTime:
+        XSO.V[FName] := FormatDateTime('hh:nn:ss', Query.Fields[I].AsDateTime);
+
+      // Целые числа
+      ftInteger, ftSmallint, ftWord:
+        XSO.I[FName] := Query.Fields[I].AsInteger;
+
+      // Числа с плавающей точкой / Float / Currency
+      ftFloat, ftCurrency, ftBCD:
+        XSO.F[FName] := Query.Fields[I].AsFloat;
+
+      // Логические поля
+      ftBoolean:
+        XSO.B[FName] := Query.Fields[I].AsBoolean;
+
+      //  Строки с обрезкой пробелов
+      ftString, ftFixedChar, ftMemo:
+      begin
+        S := TrimRight(Query.Fields[I].AsString);
+        XSO.V[FName] := S;
+      end;
+
+      // Если не распознан
+      else
+        XSO.V[FName] := Query.Fields[I].AsString;
+    end;
+  end;
+  Result := XSO;
 end;
 
 class procedure TDataExporter.ExportTableToSocket(const ConnStr, TableName: string; Socket: TTCPBlockSocket);
@@ -99,11 +189,8 @@ var
   RecNo: Integer;
   IsFirstRow: Boolean;
   Logger: TLogLogger;
-  FName: string;
   FieldTypes: TFieldTypeMap;
   FieldNames: TStringList;
-  OriginalType: TFieldType;
-  S: string;
 const
   CHUNK_THRESHOLD = 32768; // 32 КБ
 begin
@@ -115,8 +202,8 @@ begin
   FieldTypes := TFieldTypeMap.Create;
   FieldNames := TStringList.Create;;
   try
+    RecNo := -1;
     try
-      RecNo := -1;
       Connection.ConnectionString := ConnStr;
       Connection.LoginPrompt := False;
       Connection.Open;
@@ -153,67 +240,7 @@ begin
         if not IsFirstRow then ChunkBuffer.Append(',') else IsFirstRow := False;
 
         // В X-SuperObject объект создается через TSuperObject.Create
-        XSO := TSuperObject.Create;
-        for I := 0 to Query.FieldCount - 1 do
-        begin
-          FName := FieldNames[I];
-          // Получаем исходный тип из нашего словаря
-          if not FieldTypes.TryGetValue(FName, OriginalType) then
-             OriginalType := ftUnknown;
-
-          if Query.Fields[I].IsNull then
-            XSO.V[FName] := null
-          else
-          case OriginalType of
-            ftDate:
-            begin
-              S := Query.Fields[I].AsString; // "YYYYMMDD"
-              if (Trim(S) = '') or (S = '00000000') then
-                XSO.V[FName] := null
-              else
-                XSO.V[FName] := Copy(S, 1, 4) + '-' + Copy(S, 5, 2) + '-' + Copy(S, 7, 2);
-            end;
-
-            ftDateTime:
-            begin
-              S := Query.Fields[I].AsString; // "YYYYMMDDHHMMSS"
-              // Пустой DateTime в FoxPro может прийти как пустая строка или нули
-              if (Trim(S) = '') or (S = '00000000000000') then
-                XSO.V[FName] := null
-              else
-                // Собираем ISO формат: YYYY-MM-DDThh:mm:ss
-                XSO.V[FName] :=
-                  Copy(S, 1, 4) + '-' + Copy(S, 5, 2) + '-' + Copy(S, 7, 2) + 'T' +
-                  Copy(S, 9, 2) + ':' + Copy(S, 11, 2) + ':' + Copy(S, 13, 2);
-            end;
-            // Время (hh:nn:ss)
-            ftTime:
-              XSO.V[FName] := FormatDateTime('hh:nn:ss', Query.Fields[I].AsDateTime);
-
-            // Целые числа
-            ftInteger, ftSmallint, ftWord:
-              XSO.I[FName] := Query.Fields[I].AsInteger;
-
-            // Числа с плавающей точкой / Float / Currency
-            ftFloat, ftCurrency, ftBCD:
-              XSO.F[FName] := Query.Fields[I].AsFloat;
-
-            // Логические поля
-            ftBoolean:
-              XSO.B[FName] := Query.Fields[I].AsBoolean;
-
-            //  Строки с обрезкой пробелов
-            ftString, ftFixedChar, ftMemo:
-            begin
-              S := TrimRight(Query.Fields[I].AsString);
-              XSO.V[FName] := S;
-            end;
-
-            // Если не распознан
-            else
-              XSO.V[FName] := Query.Fields[I].AsString;
-          end;
-        end;
+        XSO := RowToJson(Query, FieldTypes, FieldNames);
 
         ChunkBuffer.Append(XSO.AsJSON);
         XSO := nil;

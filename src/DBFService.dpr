@@ -20,7 +20,19 @@ uses
   dbf_export in 'dbf_export.pas',
   XSuperJSON in 'superobject\XSuperJSON.pas',
   XSuperObject in 'superobject\XSuperObject.pas',
-  dbf_query_executer in 'dbf_query_executer.pas';
+  dbf_query_executer in 'dbf_query_executer.pas',
+  dbf_reader in 'dbf_reader.pas',
+  utils in 'utils.pas',
+  BufferedStreamReader in 'BufferedStreamReader.pas',
+  DBFComparator in 'DBFComparator.pas',
+  DBFTempFiles in 'DBFTempFiles.pas',
+  FolderWatcherThread in 'FolderWatcherThread.pas',
+  DirectoryMonitorManager in 'DirectoryMonitorManager.pas',
+  DbfDataPublisher in 'DbfDataPublisher.pas',
+  ReplicationStatistics in 'ReplicationStatistics.pas',
+  CheckVpfoledb in 'CheckVpfoledb.pas',
+  WinShadowCopy in 'WinShadowCopy.pas',
+  httpsend in 'synapse\httpsend.pas';
 
 {$R *.RES}
 
@@ -39,8 +51,15 @@ begin
   //
   // Application.DelayInitialize := True;
   //
+  if FindCmdLineSwitch('testdll') then
+  begin
+    if IsVfpOledbInstalled then
+      Vcl.Forms.Application.MessageBox('VpfOleDB.dll установлена.', 'Проверка провайдера')
+    else
+      Vcl.Forms.Application.MessageBox('VpfOleDB.dll не найдена. Выполните установку библиотеки.', 'Проверка провайдера')
+  end
   // Проверяем наличие ключа -app или /app в командной строке
-  if FindCmdLineSwitch('app') then
+  else if FindCmdLineSwitch('app') then
   begin
     // РЕЖИМ ПРИЛОЖЕНИЯ
     Vcl.Forms.Application.Initialize;
@@ -54,7 +73,7 @@ begin
     if not Vcl.SvcMgr.Application.DelayInitialize or Vcl.SvcMgr.Application.Installing then
       Vcl.SvcMgr.Application.Initialize;
     Vcl.SvcMgr.Application.CreateForm(TDBFServer, DBFServer);
-    Vcl.SvcMgr.Application.CreateForm(TfrmDebugMain, frmDebugMain);
+//    Vcl.SvcMgr.Application.CreateForm(TfrmDebugMain, frmDebugMain);
     Vcl.SvcMgr.Application.Run;
   end;
 end.

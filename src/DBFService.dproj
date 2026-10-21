@@ -105,6 +105,18 @@
         <DCCReference Include="superobject\XSuperJSON.pas"/>
         <DCCReference Include="superobject\XSuperObject.pas"/>
         <DCCReference Include="dbf_query_executer.pas"/>
+        <DCCReference Include="dbf_reader.pas"/>
+        <DCCReference Include="utils.pas"/>
+        <DCCReference Include="BufferedStreamReader.pas"/>
+        <DCCReference Include="DBFComparator.pas"/>
+        <DCCReference Include="DBFTempFiles.pas"/>
+        <DCCReference Include="FolderWatcherThread.pas"/>
+        <DCCReference Include="DirectoryMonitorManager.pas"/>
+        <DCCReference Include="DbfDataPublisher.pas"/>
+        <DCCReference Include="ReplicationStatistics.pas"/>
+        <DCCReference Include="CheckVpfoledb.pas"/>
+        <DCCReference Include="WinShadowCopy.pas"/>
+        <DCCReference Include="synapse\httpsend.pas"/>
         <BuildConfiguration Include="Release">
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>
@@ -509,13 +521,13 @@
                         <Operation>1</Operation>
                     </Platform>
                 </DeployClass>
-                <ProjectRoot Platform="iOSSimulator" Name="$(PROJECTNAME).app"/>
+                <ProjectRoot Platform="iOSDevice32" Name="$(PROJECTNAME).app"/>
                 <ProjectRoot Platform="Android" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="Win32" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="iOSDevice64" Name="$(PROJECTNAME).app"/>
-                <ProjectRoot Platform="Win64" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="OSX32" Name="$(PROJECTNAME).app"/>
-                <ProjectRoot Platform="iOSDevice32" Name="$(PROJECTNAME).app"/>
+                <ProjectRoot Platform="iOSSimulator" Name="$(PROJECTNAME).app"/>
+                <ProjectRoot Platform="Win64" Name="$(PROJECTNAME)"/>
             </Deployment>
             <Platforms>
                 <Platform value="Win32">True</Platform>
